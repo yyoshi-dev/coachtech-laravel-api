@@ -3,76 +3,106 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\TaskResource;
+use App\Models\Task;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class TaskController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * タスク一覧を取得
      */
     public function index()
     {
-        return response()->json([
-            'data' => [
-                ['id' => 1, 'title' => 'タスク1'],
-                ['id' => 2, 'title' => 'タスク2'],
-            ],
-        ]);
+        $tasks = Task::where('user_id', 1)->get();
+
+        return TaskResource::collection($tasks);
     }
 
     /**
-     * Store a newly created resource in storage.
+     * タスクを作成
      */
     public function store(Request $request)
     {
-        // リクエストの内容をログに出力
-        Log::info('タスク作成リクエスト', [
-            'title' => $request->input('title'),
-            'description' => $request->input('description'),
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'due_date' => 'nullable|date',
         ]);
 
-        return response()->json([
-            'message' => 'タスクを作成しました',
-            'data' => [
-                'id' => 3,
-                'title' => $request->input('title'),
-            ],
-        ], 201);
+        $data = array_merge($validated, [
+            'user_id' => 1,
+            'status' => 'pending',
+        ]);
+
+        $task = Task::create($data);
+
+        return (new TaskResource($task))
+            ->additional(['message' => 'タスクを作成しました'])
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
-     * Display the specified resource.
+     * タスク詳細を取得
      */
     public function show(string $id)
     {
-        return response()->json([
-            'data' => [
-                'id' => $id,
-                'title' => "タスク{$id}",
-            ],
-        ]);
+        $task = Task::where('user_id', 1)->find($id);
+
+        if (! $task) {
+            return response()->json([
+                'message' => 'タスクが見つかりません',
+                'error_code' => 'TASK_NOT_FOUND',
+            ], 404);
+        }
+
+        return new TaskResource($task);
     }
 
     /**
-     * Update the specified resource in storage.
+     * タスクを更新
      */
     public function update(Request $request, string $id)
     {
-        return response()->json([
-            'message' => 'タスクを更新しました',
-            'data' => [
-                'id' => $id,
-                'title' => $request->input('title'),
-            ],
+        $task = Task::where('user_id', 1)->find($id);
+
+        if (! $task) {
+            return response()->json([
+                'message' => 'タスクが見つかりません',
+                'error_code' => 'TASK_NOT_FOUND',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'status' => 'required|in:pending,in_progress,completed',
+            'due_date' => 'nullable|date',
         ]);
+
+        $task->update($validated);
+
+        return new TaskResource($task)
+            ->additional(['message' => 'タスクを更新しました']);
     }
 
     /**
-     * Remove the specified resource from storage.
+     * タスクを削除
      */
     public function destroy(string $id)
     {
+        $task = Task::where('user_id', 1)->find($id);
+
+        if (! $task) {
+            return response()->json([
+                'message' => 'タスクが見つかりません',
+                'error_code' => 'TASK_NOT_FOUND',
+            ], 404);
+        }
+
+        $task->delete();
+
         return response()->json(null, 204);
     }
 }
